@@ -1,53 +1,44 @@
-const { GraphQLServer } = require('graphql-yoga')
+const { GraphQLServer } = require('graphql-yoga');
+const { PrismaClient } = require('@prisma/client');
 
-const linkMatch = /^link[-]\d+$/
+const prisma = new PrismaClient();
 
-let links = [{
-  id: 'link-0',
-  url: 'www.howtographql.com',
-  description: 'Fullstack tutorial for GraphQL'
-}]
-
-let idCount = links.length
+const linkMatch = /^\d+$/;
 
 const resolvers = {
   Query: {
     info: () => `This is the API of a Hackernews Clone`,
-    feed: () => links,
-    link: (parent, args) => {
+    feed: async (parent, args, context) => {
+      return context.prisma.link.findMany();
+    },
+    link: (parent, args, context) => {
       // (id: ID!): Link
       const { id } = args;
-      if (!linkMatch.test(id)) throw new Error('invalid id: id must match the pattern `link-${number}`')
-      return links.find(({ id: linkId }) => linkId === id);
+      if (!linkMatch.test(id)) throw new Error('invalid id: id must be a a positive number')
+      return context.prisma.link.findOne({ where: { id: +id }});
     },
   },
   Mutation: {
-    post: (parent, args) => {
-       const link = {
-        id: `link-${idCount++}`,
-        description: args.description,
-        url: args.url,
-      }
-      links.push(link)
-      return link
+    post: (parent, args, context) => {
+      const newLink = context.prisma.link.create({
+        data: {
+          url: args.url,
+          description: args.description,
+        },
+      })
+      return newLink
     },
-    updateLink: (parent, args) => {
+    updateLink: (parent, args, context) => {
       // (id: ID!, url: String, description: String): Link
       const { id, ...updates } = args
-      if (!linkMatch.test(id)) throw new Error('invalid id: id must match the pattern `link-${number}`');
-      const link = links.find(({ id: linkId }) => linkId === id);
-      if (!link) throw new Error('unable to update, link not found!');
-      Object.assign(link, updates);
-      return link;
+      if (!linkMatch.test(id)) throw new Error('invalid id: id must be a positive number`');
+      return prisma.link.update({ where: { id: +id }, data: { ...updates } });
     },
     deleteLink: (parent, args) => {
       // (id: ID!): Link
       const { id } = args;
-      if (!linkMatch.test(id)) throw new Error('invalid id: id must match the pattern `link-${number}`');
-      const idx = links.findIndex(({ id: linkId }) => linkId === id);
-      if (idx === -1 ) throw new Error('unable to delete, link not found!');
-      const [deleted] = links.splice(idx, 1);
-      return deleted
+      if (!linkMatch.test(id)) throw new Error('invalid id: id must be a positive number`');
+      return prisma.link.delete({ where: { id: +id } });
     }
   }
 }
@@ -55,5 +46,8 @@ const resolvers = {
 const server = new GraphQLServer({
   typeDefs: './src/schema.graphql',
   resolvers,
+  context: {
+    prisma,
+  }
 })
 server.start(() => console.log(`Server is running on http://localhost:4000`))
